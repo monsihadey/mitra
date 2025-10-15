@@ -1,4 +1,4 @@
-name: RDP
+name: RDP Setup with User Files
 
 on:
   workflow_dispatch:
@@ -6,10 +6,18 @@ on:
 jobs:
   secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 3600 # Max 6 hours on GitHub-hosted runners
+    strategy:
+      matrix:
+        session: [1,2,3]  # 6 parallel sessions
+    timeout-minutes: 3600
 
     steps:
-      - name: Enable RDP + Firewall + Prevent Disconnects
+      # Step 1: Checkout repository (so files are accessible)
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Step 2: Enable RDP + Firewall + Prevent Disconnects
+      - name: Enable RDP + Firewall
         run: |
           # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
@@ -20,120 +28,55 @@ jobs:
           netsh advfirewall firewall delete rule name="AllowRDP" >$null 2>&1
           netsh advfirewall firewall add rule name="AllowRDP" dir=in action=allow protocol=TCP localport=3389
 
-          # Prevent session timeouts
-          $regPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
-          if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
-          Set-ItemProperty -Path $regPath -Name "MaxDisconnectionTime" -Value 0 -Type DWord -Force
-          Set-ItemProperty -Path $regPath -Name "MaxIdleTime" -Value 0 -Type DWord -Force
-          Set-ItemProperty -Path $regPath -Name "MaxSessionTime" -Value 0 -Type DWord -Force
-
-          # Disable screensaver lock
-          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeOut" -Value "0" -Force
-          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaverIsSecure" -Value "0" -Force
-          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "SCRNSAVE.EXE" -Value "" -Force
-
-          # Disable power saving / hibernate
-          powercfg /change standby-timeout-ac 0
-          powercfg /change monitor-timeout-ac 0
-          powercfg /change disk-timeout-ac 0
-          powercfg /hibernate off
-
-          # Restart RDP service
-          Restart-Service TermService -Force
-
-      - name: Create RDP User (Password = 1234)
+      # Step 3: Create RDP user
+      - name: Create RDP User
         run: |
-          secedit /export /cfg $env:TEMP\secpol.cfg
-          (Get-Content $env:TEMP\secpol.cfg).Replace("PasswordComplexity = 1","PasswordComplexity = 0") | Set-Content $env:TEMP\secpol.cfg
-          secedit /configure /db $env:windir\security\local.sdb /cfg $env:TEMP\secpol.cfg /areas SECURITYPOLICY
-          gpupdate /force
-
+          $username = "RDP$(${{ matrix.session }})"
           $password = "1234"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) { Remove-LocalUser -Name "RDP" }
+          if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) { Remove-LocalUser -Name $username }
 
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $username
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
 
-          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
+          echo "RDP_CREDS=User: $username | Password: $password" >> $env:GITHUB_ENV
 
-      - name: Install Tailscale
+      # Step 4: Install Python dependencies
+      - name: Install Python Dependencies
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          python -m pip install --upgrade pip
+          pip install PyQt5 playwright requests
+          playwright install
 
-      - name: Start Tailscale
+      # Step 5: Copy repository files to each user's Downloads folder
+      - name: Setup User Files
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          $username = "RDP$(${{ matrix.session }})"
+          $userProfile = "C:\Users\$username"
+          $downloadFolder = Join-Path $userProfile "Downloads\NewFolder"
+          if (-not (Test-Path $downloadFolder)) { New-Item -ItemType Directory -Path $downloadFolder -Force }
 
-          $tsIP = $null
-          for ($i=0; $i -lt 10; $i++) {
-            $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-            if ($tsIP) { break }
-            Start-Sleep -Seconds 5
-          }
+          # Copy files from repository (prox.txt, rpa.json, useragent.txt, humanex.py)
+          $repoFolder = "${{ github.workspace }}"
+          Copy-Item -Path (Join-Path $repoFolder "prox.txt") -Destination $downloadFolder -Force
+          Copy-Item -Path (Join-Path $repoFolder "rpa.json") -Destination $downloadFolder -Force
+          Copy-Item -Path (Join-Path $repoFolder "useragent.txt") -Destination $downloadFolder -Force
+          Copy-Item -Path (Join-Path $repoFolder "humanex.py") -Destination $downloadFolder -Force
 
-          if (-not $tsIP) { Write-Error "Tailscale IP not assigned"; exit 1 }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $tsIP"
-
-      - name: Start SOCKS5 Proxy (gost) on port 1080
-        run: |
-          $tsIP = $env:TAILSCALE_IP
-          if (-not $tsIP) { Write-Error "TAILSCALE_IP not found"; exit 1 }
-
-          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          $gostUrl = "https://github.com/go-gost/gost/releases/download/v3.0.0/gost_3.0.0_windows_amd64.zip"
-          $zipPath = "$env:TEMP\gost.zip"
-          $extractPath = "C:\gost"
-
-          Invoke-WebRequest -Uri $gostUrl -OutFile $zipPath -UseBasicParsing
-          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
-          $exePath = (Get-ChildItem $extractPath -Recurse | Where-Object {$_.Name -eq "gost.exe"}).FullName
-
-          netsh advfirewall firewall delete rule name="SOCKS5-1080" >$null 2>&1
-          netsh advfirewall firewall add rule name="SOCKS5-1080" dir=in action=allow protocol=TCP localport=1080
-
-          Start-Process -FilePath $exePath -ArgumentList '-L=:1080' -WindowStyle Hidden
-          Write-Host "SOCKS5 proxy listening on: $tsIP:1080"
-
-      - name: Install Visual Studio Code
-        run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          choco install -y vscode
-
-      - name: AdsPower Notice
-        run: |
-          Write-Host "⚠️ AdsPower installer requires manual download from https://www.adspower.com/download"
-          Write-Host "Automated install not possible due to GitHub runner network restrictions."
-
-      - name: Verify RDP
-        run: |
-          $tsIP = $env:TAILSCALE_IP
-          Write-Host "Tailscale IP: $tsIP"
-          $test = Test-NetConnection -ComputerName $tsIP -Port 3389
-          if (-not $test.TcpTestSucceeded) { exit 1 }
-          Write-Host "✅ RDP Port reachable"
-
+      # Step 6: Keep Session Alive
       - name: Keep Session Alive
         run: |
-          $tsIP = $env:TAILSCALE_IP
+          $username = "RDP$(${{ matrix.session }})"
+          $tsIP = "N/A (RDP ready)"
           Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $tsIP"
-          Write-Host "Username: RDP"
+          Write-Host "Username: $username"
           Write-Host "Password: 1234"
-          Write-Host "SOCKS5 Proxy: $tsIP:1080"
-          Write-Host "VSCode: Installed"
-          Write-Host "AdsPower: Manual download required"
+          Write-Host "Downloads Folder: C:\Users\$username\Downloads\NewFolder"
+          Write-Host "Files: prox.txt, rpa.json, useragent.txt, humanex.py"
           Write-Host "==================`n"
 
           while ($true) {
-            Write-Host "[$(Get-Date)] RDP Active"
+            Write-Host "[$(Get-Date)] RDP$(${{ matrix.session }}) Active"
             Start-Sleep -Seconds 300
           }
