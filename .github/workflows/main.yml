@@ -8,36 +8,31 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        session: [1,2,3]
+        session: [1,2,3,4,5,6]
     timeout-minutes: 3600
 
     steps:
-      # 1) Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # 2) Enable RDP + Firewall
       - name: Enable RDP + Firewall
         shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall delete rule name="AllowRDP" >$null 2>&1
-          netsh advfirewall firewall add rule name="AllowRDP" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall delete rule name='AllowRDP' >$null 2>&1
+          netsh advfirewall firewall add rule name='AllowRDP' dir=in action=allow protocol=TCP localport=3389
 
-      # 3) Create RDP User
       - name: Create RDP User
         shell: powershell
         run: |
-          # Allow weak password
           $cfg = "$env:TEMP\secpol.cfg"
           secedit /export /cfg $cfg
           (Get-Content $cfg) -replace 'PasswordComplexity\s*=\s*\d','PasswordComplexity = 0' | Set-Content $cfg
           secedit /configure /db $env:windir\security\local.sdb /cfg $cfg /areas SECURITYPOLICY
           gpupdate /force
 
-          # Create user
           $username = "RDP${{ matrix.session }}"
           $password = "1234"
           if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) { Remove-LocalUser -Name $username }
@@ -49,7 +44,6 @@ jobs:
           echo "RDP_USER=$username" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
 
-      # 4) Install Python dependencies
       - name: Upgrade pip
         shell: powershell
         run: python -m pip install --upgrade pip
@@ -68,7 +62,6 @@ jobs:
         shell: powershell
         run: pip install requests
 
-      # 5) Copy repository files to user Downloads\NewFolder
       - name: Setup User Files
         shell: powershell
         run: |
@@ -77,23 +70,23 @@ jobs:
           if (-not (Test-Path $userFolder)) { New-Item -ItemType Directory -Path $userFolder -Force | Out-Null }
 
           $repo = "${{ github.workspace }}"
-          $files = @("prox.txt","rpa.json","useragent.txt","humanex.py")
+          $files = @('prox.txt','rpa.json','useragent.txt','humanex.py')
           foreach ($f in $files) {
             $src = Join-Path $repo $f
             if (Test-Path $src) { Copy-Item -Path $src -Destination $userFolder -Force }
           }
 
-      # 6) Print RDP Info safely
       - name: Print RDP Info
         shell: powershell
         run: |
           $username = $env:RDP_USER
           $password = $env:RDP_PASS
           $folder = "C:\Users\$username\Downloads\NewFolder"
-          Write-Host "======================================"
-          Write-Host ("Session: {0}" -f ${{ matrix.session }})
-          Write-Host ("Username: {0}" -f $username)
-          Write-Host ("Password: {0}" -f $password)
-          Write-Host ("Files copied to: {0}" -f $folder)
-          Write-Host "Note: Runner is temporary — RDP session disappears when workflow finishes."
-          Write-Host "======================================"
+
+          Write-Host '======================================'
+          Write-Host ('Session: {0}' -f ${{ matrix.session }})
+          Write-Host ('Username: {0}' -f $username)
+          Write-Host ('Password: {0}' -f $password)
+          Write-Host ('Files copied to: {0}' -f $folder)
+          Write-Host 'Note: Runner is temporary — RDP session disappears when workflow finishes.'
+          Write-Host '======================================'
