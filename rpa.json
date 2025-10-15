@@ -1,0 +1,643 @@
+[
+  {
+    "type": "javaScript",
+    "config": {
+      "params": [],
+      "content": "return JSON.stringify(\n  (function () {\n    const urls = [\n      'https://www.policygenius.com/',\n      'https://www.insurance.com/',\n      'https://www.thezebra.com/',\n      'https://www.compare.com/insurance/',\n      'https://www.valuepenguin.com/insurance',\n      'https://www.nerdwallet.com/best/insurance',\n      'https://www.moneygeek.com/insurance/',\n      'https://www.smartfinancial.com/',\n      'https://www.insurify.com/',\n      'https://www.netquote.com/',\n      'https://www.esurance.com/',\n      'https://www.geico.com/',\n      'https://www.progressive.com/',\n      'https://www.statefarm.com/insurance',\n      'https://www.allstate.com/',\n      'https://www.libertymutual.com/',\n      'https://www.travelers.com/',\n      'https://www.amfam.com/',\n      'https://www.nationwide.com/',\n      'https://www.healthmarkets.com/'\n    ];\n\n    function shuffle(array) {\n      for (let i = array.length - 1; i > 0; i--) {\n        const j = Math.floor(Math.random() * (i + 1));\n        [array[i], array[j]] = [array[j], array[i]];\n      }\n    }\n\n    shuffle(urls);\n    const count = Math.floor(Math.random() * 2) + 9;\n    return urls.slice(0, count);\n  })()\n);",
+      "variable": "urlStr",
+      "remark": ""
+    }
+  },
+  {
+    "type": "toJson",
+    "config": {
+      "content": "urlStr",
+      "variable": "urlArray",
+      "remark": ""
+    }
+  },
+  {
+    "type": "newPage",
+    "config": {}
+  },
+  {
+    "type": "forLists",
+    "config": {
+      "content": "urlArray",
+      "variableIndex": "for_lits_index",
+      "variable": "for_lits_item",
+      "children": [
+        {
+          "type": "gotoUrl",
+          "config": {
+            "url": "${for_lits_item}",
+            "timeout": 30000,
+            "remark": ""
+          }
+        },
+        {
+          "type": "waitForSelector",
+          "config": {
+            "selector": "body",
+            "serial": 1,
+            "isShow": "1",
+            "timeout": 30000,
+            "remark": ""
+          }
+        },
+        {
+          "type": "waitTime",
+          "config": {
+            "timeoutType": "fixedValue",
+            "timeout": 5000,
+            "timeoutMin": 1000,
+            "timeoutMax": 300000,
+            "remark": ""
+          }
+        },
+        {
+          "type": "scrollPage",
+          "config": {
+            "distance": 0,
+            "type": "smooth",
+            "scrollType": "position",
+            "position": "bottom",
+            "remark": ""
+          }
+        }
+      ],
+      "remark": ""
+    }
+  },
+  {
+    "type": "gotoUrl",
+    "config": {
+      "url": "https://rpm-insurance-flow.lovable.app/auto-insurance-quotes",
+      "timeout": 50000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "randomWheelDistance": [
+        286,
+        321
+      ],
+      "randomWheelSleepTime": [
+        100,
+        2000
+      ]
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "top",
+      "remark": "",
+      "randomWheelDistance": [
+        321,
+        411
+      ],
+      "randomWheelSleepTime": [
+        300,
+        1212
+      ]
+    }
+  },
+  {
+    "type": "closeOtherPage",
+    "config": {}
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "selector",
+      "selectorRadio": "TEXT",
+      "selector": "Blogs",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        100,
+        150
+      ],
+      "randomWheelSleepTime": [
+        200,
+        300
+      ]
+    }
+  },
+  {
+    "type": "waitTime",
+    "config": {
+      "timeoutType": "fixedValue",
+      "timeout": 1500,
+      "timeoutMin": 1000,
+      "timeoutMax": 300000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "gotoUrl",
+    "config": {
+      "url": "https://topstoryindia.com/bundle-home-and-auto-insurance-coverage-today/",
+      "timeout": 30000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "waitForSelector",
+    "config": {
+      "selectorRadio": "XPath",
+      "selector": "//*[@id=\"innerWrapperForTooltipsAndWidget\"]/div/button/div",
+      "serial": 1,
+      "isShow": "1",
+      "timeout": 30000,
+      "variable": "",
+      "remark": "",
+      "_copyItemIndex": "0_10",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        100,
+        124
+      ],
+      "randomWheelSleepTime": [
+        1000,
+        5000
+      ]
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 666,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "middle",
+      "remark": "",
+      "randomWheelDistance": [
+        200,
+        340
+      ],
+      "randomWheelSleepTime": [
+        500,
+        3000
+      ]
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "selector",
+      "selectorRadio": "TEXT",
+      "selector": "Find the Right Insurance Plan for Your Needs",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        300,
+        430
+      ],
+      "randomWheelSleepTime": [
+        300,
+        600
+      ]
+    }
+  },
+  {
+    "type": "gotoUrl",
+    "config": {
+      "url": "https://topstoryindia.com/find-the-right-insurance-plan-for-your-needs/",
+      "timeout": 30000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "waitForSelector",
+    "config": {
+      "selectorRadio": "XPath",
+      "selector": "//*[@id=\"innerWrapperForTooltipsAndWidget\"]/div/button/div",
+      "serial": 1,
+      "isShow": "1",
+      "timeout": 30000,
+      "variable": "",
+      "remark": "",
+      "_copyItemIndex": "0_18",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        100,
+        300
+      ],
+      "randomWheelSleepTime": [
+        50,
+        3000
+      ]
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 666,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "middle",
+      "remark": "",
+      "randomWheelDistance": [
+        300,
+        332
+      ],
+      "randomWheelSleepTime": [
+        200,
+        700
+      ],
+      "_copyItemIndex": "0_27",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "selector",
+      "selectorRadio": "TEXT",
+      "selector": "Maximize Your Mortgage: Tips and Insights",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        300,
+        398
+      ],
+      "randomWheelSleepTime": [
+        385,
+        675
+      ]
+    }
+  },
+  {
+    "type": "waitTime",
+    "config": {
+      "timeoutType": "fixedValue",
+      "timeout": 3000,
+      "timeoutMin": 1000,
+      "timeoutMax": 300000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "gotoUrl",
+    "config": {
+      "url": "https://topstoryindia.com/maximize-your-mortgage-tips-and-insights/",
+      "timeout": 30000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "waitForSelector",
+    "config": {
+      "selectorRadio": "XPath",
+      "selector": "//*[@id=\"innerWrapperForTooltipsAndWidget\"]/div/button/div",
+      "serial": 1,
+      "isShow": "1",
+      "timeout": 30000,
+      "variable": "",
+      "remark": "",
+      "_copyItemIndex": "0_26",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        100,
+        400
+      ],
+      "randomWheelSleepTime": [
+        50,
+        1900
+      ],
+      "_copyItemIndex": "0_25",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "top",
+      "remark": "",
+      "randomWheelDistance": [
+        192,
+        349
+      ],
+      "randomWheelSleepTime": [
+        50,
+        1543
+      ],
+      "_copyItemIndex": "0_30",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 666,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "middle",
+      "remark": "",
+      "randomWheelDistance": [
+        197,
+        394
+      ],
+      "randomWheelSleepTime": [
+        70,
+        2121
+      ],
+      "_copyItemIndex": "0_32",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "gotoUrl",
+    "config": {
+      "url": "https://topstoryindia.com/find-the-right-insurance-plan-for-your-needs/",
+      "timeout": 30000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "waitForSelector",
+    "config": {
+      "selectorRadio": "XPath",
+      "selector": "//*[@id=\"innerWrapperForTooltipsAndWidget\"]/div/button/div",
+      "serial": 1,
+      "isShow": "1",
+      "timeout": 30000,
+      "variable": "",
+      "remark": "",
+      "_copyItemIndex": "0_18",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        100,
+        300
+      ],
+      "randomWheelSleepTime": [
+        50,
+        3000
+      ]
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 666,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "middle",
+      "remark": "",
+      "randomWheelDistance": [
+        300,
+        332
+      ],
+      "randomWheelSleepTime": [
+        200,
+        700
+      ],
+      "_copyItemIndex": "0_27",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "selector",
+      "selectorRadio": "TEXT",
+      "selector": "Maximize Your Mortgage: Tips and Insights",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        300,
+        398
+      ],
+      "randomWheelSleepTime": [
+        385,
+        675
+      ]
+    }
+  },
+  {
+    "type": "waitTime",
+    "config": {
+      "timeoutType": "fixedValue",
+      "timeout": 3000,
+      "timeoutMin": 1000,
+      "timeoutMax": 300000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "gotoUrl",
+    "config": {
+      "url": "https://topstoryindia.com/maximize-your-mortgage-tips-and-insights/",
+      "timeout": 30000,
+      "remark": ""
+    }
+  },
+  {
+    "type": "waitForSelector",
+    "config": {
+      "selectorRadio": "XPath",
+      "selector": "//*[@id=\"innerWrapperForTooltipsAndWidget\"]/div/button/div",
+      "serial": 1,
+      "isShow": "1",
+      "timeout": 30000,
+      "variable": "",
+      "remark": "",
+      "_copyItemIndex": "0_26",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "bottom",
+      "remark": "",
+      "randomWheelDistance": [
+        100,
+        400
+      ],
+      "randomWheelSleepTime": [
+        50,
+        1900
+      ],
+      "_copyItemIndex": "0_25",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 0,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "top",
+      "remark": "",
+      "randomWheelDistance": [
+        192,
+        349
+      ],
+      "randomWheelSleepTime": [
+        50,
+        1543
+      ],
+      "_copyItemIndex": "0_30",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "scrollPage",
+    "config": {
+      "rangeType": "window",
+      "selectorRadio": "CSS",
+      "selector": "",
+      "serial": 1,
+      "distance": 666,
+      "type": "smooth",
+      "scrollType": "position",
+      "position": "middle",
+      "remark": "",
+      "randomWheelDistance": [
+        197,
+        394
+      ],
+      "randomWheelSleepTime": [
+        70,
+        2121
+      ],
+      "_copyItemIndex": "0_32",
+      "_copyItemType": ""
+    }
+  },
+  {
+    "type": "waitTime",
+    "config": {
+      "timeout": 300000,
+      "timeoutType": "fixedValue"
+    }
+  }
+]
