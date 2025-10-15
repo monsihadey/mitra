@@ -1,4 +1,4 @@
-name: RDP Setup with Files (6 parallel sessions)
+name: RDP Matrix - 6 sessions (with files, tailscale, gost, playwright)
 
 on:
   workflow_dispatch:
@@ -10,39 +10,130 @@ jobs:
       matrix:
         session: [1,2,3,4,5,6]
     timeout-minutes: 3600
+    env:
+      # Provide RDP password via repo secret RDP_PASSWORD if you want; otherwise default to "1234"
+      RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+      TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Enable RDP + Firewall
+      - name: Enable RDP + Firewall + Prevent Disconnects
         shell: powershell
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'SecurityLayer' -Value 0 -Force
+
           netsh advfirewall firewall delete rule name='AllowRDP' >$null 2>&1
           netsh advfirewall firewall add rule name='AllowRDP' dir=in action=allow protocol=TCP localport=3389
 
-      - name: Create RDP User
+          $regPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+          if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+          Set-ItemProperty -Path $regPath -Name 'MaxDisconnectionTime' -Value 0 -Type DWord -Force
+          Set-ItemProperty -Path $regPath -Name 'MaxIdleTime' -Value 0 -Type DWord -Force
+          Set-ItemProperty -Path $regPath -Name 'MaxSessionTime' -Value 0 -Type DWord -Force
+
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'ScreenSaveTimeOut' -Value '0' -Force
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'ScreenSaverIsSecure' -Value '0' -Force
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name 'SCRNSAVE.EXE' -Value '' -Force
+
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /change disk-timeout-ac 0
+          powercfg /hibernate off
+
+          Restart-Service TermService -Force
+
+      - name: Allow weak passwords (temporarily) & create unique RDP user
         shell: powershell
         run: |
+          # Export and allow weak password if policy line exists
           $cfg = "$env:TEMP\secpol.cfg"
           secedit /export /cfg $cfg
-          (Get-Content $cfg) -replace 'PasswordComplexity\s*=\s*\d','PasswordComplexity = 0' | Set-Content $cfg
-          secedit /configure /db $env:windir\security\local.sdb /cfg $cfg /areas SECURITYPOLICY
-          gpupdate /force
+          if (Test-Path $cfg) {
+            (Get-Content $cfg) -replace 'PasswordComplexity\s*=\s*\d','PasswordComplexity = 0' | Set-Content $cfg -Force
+            secedit /configure /db $env:windir\security\local.sdb /cfg $cfg /areas SECURITYPOLICY
+            gpupdate /force
+          }
 
-          $username = "RDP${{ matrix.session }}"
-          $password = "1234"
-          if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) { Remove-LocalUser -Name $username }
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          # Use matrix session number
+          $session = ${{ matrix.session }}
+          $username = "RDP$session"
+
+          # Password: prefer secret, fallback to 1234
+          $pwd = $env:RDP_PASSWORD
+          if ([string]::IsNullOrWhiteSpace($pwd)) { $pwd = '1234' }
+
+          if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
+            Remove-LocalUser -Name $username -ErrorAction SilentlyContinue
+          }
+
+          $securePass = ConvertTo-SecureString $pwd -AsPlainText -Force
           New-LocalUser -Name $username -Password $securePass -AccountNeverExpires -PasswordNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member $username
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+          Add-LocalGroupMember -Group 'Administrators' -Member $username
+          Add-LocalGroupMember -Group 'Remote Desktop Users' -Member $username
 
-          echo "RDP_USER=$username" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+          Write-Output ("RDP_USER={0}" -f $username) >> $env:GITHUB_ENV
+          Write-Output ("RDP_PASS={0}" -f $pwd) >> $env:GITHUB_ENV
+          Write-Host ('Created user: {0}' -f $username)
+
+      - name: Install Tailscale MSI
+        shell: powershell
+        run: |
+          $tsUrl = 'https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi'
+          $installerPath = Join-Path $env:TEMP 'tailscale.msi'
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
+          Start-Process -FilePath msiexec.exe -ArgumentList '/i', $installerPath, '/quiet', '/norestart' -Wait
+          Remove-Item $installerPath -Force
+
+      - name: Start Tailscale and get IP
+        shell: powershell
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          $session = ${{ matrix.session }}
+          $tsExe = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+          if (-not (Test-Path $tsExe)) { Write-Error 'tailscale.exe not found'; exit 1 }
+          & $tsExe up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=("gh-runner-{0}-{1}" -f $env:GITHUB_RUN_ID, $session)
+
+          $tsIP = $null
+          for ($i=0; $i -lt 12; $i++) {
+            $tsIP = & $tsExe ip -4
+            if ($tsIP) { break }
+            Start-Sleep -Seconds 5
+          }
+
+          if (-not $tsIP) { Write-Error 'Tailscale IP not assigned'; exit 1 }
+          Write-Output ("TAILSCALE_IP={0}" -f $tsIP) >> $env:GITHUB_ENV
+          Write-Host ('Tailscale IP: {0}' -f $tsIP)
+
+      - name: Start gost SOCKS5 on unique port (1080 + session-1)
+        shell: powershell
+        run: |
+          $session = ${{ matrix.session }}
+          $tsIP = $env:TAILSCALE_IP
+          if (-not $tsIP) { Write-Error 'TAILSCALE_IP missing'; exit 1 }
+
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $gostUrl = 'https://github.com/go-gost/gost/releases/download/v3.0.0/gost_3.0.0_windows_amd64.zip'
+          $zipPath = Join-Path $env:TEMP 'gost.zip'
+          $extractPath = 'C:\gost'
+          Invoke-WebRequest -Uri $gostUrl -OutFile $zipPath -UseBasicParsing
+          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+          Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+
+          $exePath = (Get-ChildItem -Path $extractPath -Recurse -Filter 'gost.exe' | Select-Object -First 1).FullName
+          if (-not $exePath) { Write-Error 'gost.exe not found'; exit 1 }
+
+          $port = 1080 + ($session - 1)
+          netsh advfirewall firewall delete rule name=("SOCKS5-{0}" -f $port) >$null 2>&1
+          netsh advfirewall firewall add rule name=("SOCKS5-{0}" -f $port) dir=in action=allow protocol=TCP localport=$port
+
+          $proc = Start-Process -FilePath $exePath -ArgumentList ("-L=:{0}" -f $port) -WindowStyle Hidden -PassThru
+          Write-Output ("GOST_PORT={0}" -f $port) >> $env:GITHUB_ENV
+          Write-Host ('Started gost PID: {0} on port {1}' -f $proc.Id, $port)
 
       - name: Upgrade pip
         shell: powershell
@@ -52,41 +143,55 @@ jobs:
         shell: powershell
         run: pip install PyQt5
 
-      - name: Install Playwright
+      - name: Install Playwright and browsers
         shell: powershell
         run: |
           pip install playwright
           playwright install
 
-      - name: Install Requests
+      - name: Install requests
         shell: powershell
         run: pip install requests
 
-      - name: Setup User Files
+      - name: Create Downloads\NewFolder and copy repository files
         shell: powershell
         run: |
           $username = $env:RDP_USER
-          $userFolder = "C:\Users\$username\Downloads\NewFolder"
-          if (-not (Test-Path $userFolder)) { New-Item -ItemType Directory -Path $userFolder -Force | Out-Null }
+          $userPath = Join-Path 'C:\Users' $username
+          $target = Join-Path $userPath 'Downloads\NewFolder'
+          if (-not (Test-Path $target)) { New-Item -Path $target -ItemType Directory -Force | Out-Null }
 
-          $repo = "${{ github.workspace }}"
+          $repo = $env:GITHUB_WORKSPACE
           $files = @('prox.txt','rpa.json','useragent.txt','humanex.py')
           foreach ($f in $files) {
             $src = Join-Path $repo $f
-            if (Test-Path $src) { Copy-Item -Path $src -Destination $userFolder -Force }
+            if (Test-Path $src) {
+              Copy-Item -Path $src -Destination $target -Force
+            } else {
+              Write-Host ('WARNING: {0} not found in repo' -f $f)
+            }
           }
 
-      - name: Print RDP Info
+      - name: Display connection info and keep session alive
         shell: powershell
         run: |
+          $session = ${{ matrix.session }}
           $username = $env:RDP_USER
           $password = $env:RDP_PASS
-          $folder = "C:\Users\$username\Downloads\NewFolder"
+          $tsIP = $env:TAILSCALE_IP
+          $gostPort = $env:GOST_PORT
+          $folder = ("C:\Users\{0}\Downloads\NewFolder" -f $username)
 
           Write-Host '======================================'
-          Write-Host ('Session: {0}' -f ${{ matrix.session }})
-          Write-Host ('Username: {0}' -f $username)
-          Write-Host ('Password: {0}' -f $password)
+          Write-Host ('Session: {0}' -f $session)
+          Write-Host ('Tailscale IP: {0}' -f $tsIP)
+          Write-Host ('RDP Username: {0}' -f $username)
+          Write-Host ('RDP Password: {0}' -f $password)
+          Write-Host ('SOCKS5 Proxy: {0}:{1}' -f $tsIP, $gostPort)
           Write-Host ('Files copied to: {0}' -f $folder)
-          Write-Host 'Note: Runner is temporary — RDP session disappears when workflow finishes.'
           Write-Host '======================================'
+
+          while ($true) {
+            Write-Host ('[{0}] Runner alive for session {1}' -f (Get-Date), $session)
+            Start-Sleep -Seconds 300
+          }
