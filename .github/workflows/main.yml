@@ -1,4 +1,4 @@
-name: RDP Setup with User Files (no sleep)
+name: RDP Setup with User Files (6 parallel sessions)
 
 on:
   workflow_dispatch:
@@ -12,11 +12,11 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      # 1) Checkout repository so files are available
+      # 1) Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # 2) Enable RDP + firewall
+      # 2) Enable RDP + Firewall
       - name: Enable RDP + Firewall
         shell: powershell
         run: |
@@ -26,11 +26,11 @@ jobs:
           netsh advfirewall firewall delete rule name="AllowRDP" >$null 2>&1
           netsh advfirewall firewall add rule name="AllowRDP" dir=in action=allow protocol=TCP localport=3389
 
-      # 3) Create RDP user (temporarily disable password complexity so "1234" works)
-      - name: Create RDP User (Password = 1234)
+      # 3) Create RDP User (Password = 1234)
+      - name: Create RDP User
         shell: powershell
         run: |
-          # Export and modify local security policy to allow weak password
+          # Disable password complexity temporarily
           $cfg = "$env:TEMP\secpol.cfg"
           secedit /export /cfg $cfg
 
@@ -44,7 +44,7 @@ jobs:
           secedit /configure /db $env:windir\security\local.sdb /cfg $cfg /areas SECURITYPOLICY
           gpupdate /force
 
-          # Build username from matrix value
+          # Create user with matrix session number
           $username = "RDP${{ matrix.session }}"
           $password = "1234"
 
@@ -63,7 +63,7 @@ jobs:
           echo "RDP_USER=$username" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
 
-      # 4) Install Python dependencies and Playwright browsers
+      # 4) Install Python dependencies
       - name: Install Python Dependencies
         shell: powershell
         run: |
@@ -71,20 +71,16 @@ jobs:
           pip install PyQt5 playwright requests
           playwright install
 
-      # 5) Copy required repository files to each user's Downloads\NewFolder
+      # 5) Copy repository files to each user's Downloads\NewFolder
       - name: Setup User Files
         shell: powershell
         run: |
-          $username = "RDP${{ matrix.session }}"
+          $username = $env:RDP_USER
           $userProfile = "C:\Users\$username"
           $downloadFolder = Join-Path $userProfile "Downloads\NewFolder"
-          if (-not (Test-Path $downloadFolder)) {
-            New-Item -ItemType Directory -Path $downloadFolder -Force | Out-Null
-          }
+          if (-not (Test-Path $downloadFolder)) { New-Item -ItemType Directory -Path $downloadFolder -Force | Out-Null }
 
           $repoFolder = "${{ github.workspace }}"
-
-          # Copy files if they exist in the repo; if missing, write a warning file so you see it
           $files = @("prox.txt","rpa.json","useragent.txt","humanex.py")
           foreach ($f in $files) {
             $src = Join-Path $repoFolder $f
@@ -95,17 +91,17 @@ jobs:
             }
           }
 
-      # 6) Print session info (no sleep) — workflow will finish after this step
-      - name: Print RDP Info (workflow will finish)
+      # 6) Print session info (workflow will finish)
+      - name: Print RDP Info
         shell: powershell
         run: |
           $username = $env:RDP_USER
           $password = $env:RDP_PASS
           $folder = "C:\Users\$username\Downloads\NewFolder"
           Write-Host "======================================"
-          Write-Host "Session: ${{ matrix.session }}"
-          Write-Host "Username: $username"
-          Write-Host "Password: $password"
-          Write-Host "Files copied to: $folder"
-          Write-Host "Note: Runner will be destroyed when the workflow completes — RDP will NOT persist."
+          Write-Host ("Session: {0}" -f ${{ matrix.session }})
+          Write-Host ("Username: {0}" -f $username)
+          Write-Host ("Password: {0}" -f $password)
+          Write-Host ("Files copied to: {0}" -f $folder)
+          Write-Host "Note: Runner will be destroyed when workflow completes — RDP will NOT persist."
           Write-Host "======================================"
