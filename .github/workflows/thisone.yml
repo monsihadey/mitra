@@ -1,4 +1,4 @@
-name: Windows Setup (Robust Single Job)
+name: Windows Setup (Single Robust)
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Upgrade pip (optional, continue on failure)
+      - name: Upgrade pip (optional)
         continue-on-error: true
         run: |
           try {
@@ -31,7 +31,7 @@ jobs:
             Write-Host "pip upgrade failed: $($_.Exception.Message)"
           }
 
-      - name: Install Python Dependencies (optional, continue on failure)
+      - name: Install Python Dependencies (optional)
         continue-on-error: true
         run: |
           try {
@@ -41,7 +41,7 @@ jobs:
             Write-Host "Python dependency install failed: $($_.Exception.Message)"
           }
 
-      - name: Install Playwright Browsers (optional, continue on failure)
+      - name: Install Playwright Browsers (optional)
         continue-on-error: true
         run: |
           try {
@@ -51,7 +51,7 @@ jobs:
             Write-Host "Playwright browser install failed: $($_.Exception.Message)"
           }
 
-      - name: Create Folder Structure and Copy Files (skip missing files individually)
+      - name: Create Working Folder and Copy Files (skip missing individually)
         continue-on-error: true
         run: |
           $target = "C:\temp\workspace-files"
@@ -74,14 +74,14 @@ jobs:
             }
           }
 
-          Write-Host "Final contents:"
+          Write-Host "Working folder contents:"
           Get-ChildItem $target -Force | Select-Object Name, Length, LastWriteTime
 
-      - name: Install Tailscale (optional, continue on failure)
+      - name: Install Tailscale (optional)
         continue-on-error: true
         run: |
           try {
-            $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+            $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
             $installerPath = "$env:TEMP\tailscale.msi"
 
             Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
@@ -93,24 +93,26 @@ jobs:
             Write-Host "Tailscale install failed: $($_.Exception.Message)"
           }
 
-      - name: Start Tailscale if auth key exists (optional, continue on failure)
+      - name: Start Tailscale (auth key OR fallback login URL)
         continue-on-error: true
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
           try {
-            if (-not $env:TAILSCALE_AUTH_KEY) {
-              Write-Host "TAILSCALE_AUTH_KEY not set, skipping Tailscale startup"
-              exit 0
-            }
-
             $tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+
             if (-not (Test-Path $tailscaleExe)) {
-              Write-Host "Tailscale executable not found, skipping startup"
+              Write-Host "Tailscale executable not found"
               exit 0
             }
 
-            & $tailscaleExe up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=gh-setup-$env:GITHUB_RUN_ID
+            if ($env:TAILSCALE_AUTH_KEY) {
+              Write-Host "Starting Tailscale with auth key..."
+              & $tailscaleExe up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=gh-setup-$env:GITHUB_RUN_ID
+            } else {
+              Write-Host "No TAILSCALE_AUTH_KEY found, using login URL fallback..."
+              & $tailscaleExe up --hostname=gh-setup-$env:GITHUB_RUN_ID
+            }
 
             $tsIP = $null
             for ($i = 0; $i -lt 12; $i++) {
@@ -125,13 +127,13 @@ jobs:
               "TAILSCALE_IP=$tsIP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               Write-Host "Tailscale IP: $tsIP"
             } else {
-              Write-Host "Tailscale IP not assigned, continuing without it"
+              Write-Host "Tailscale started but no IPv4 assigned yet"
             }
           } catch {
             Write-Host "Tailscale startup failed: $($_.Exception.Message)"
           }
 
-      - name: Install gost SOCKS5 proxy (optional, continue on failure)
+      - name: Install gost SOCKS5 proxy (optional)
         continue-on-error: true
         run: |
           try {
@@ -143,6 +145,7 @@ jobs:
             Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
 
             $exePath = (Get-ChildItem $extractPath -Recurse | Where-Object { $_.Name -eq "gost.exe" } | Select-Object -First 1).FullName
+
             if (-not $exePath) {
               Write-Host "gost.exe not found after extraction"
               exit 0
@@ -154,7 +157,7 @@ jobs:
             Write-Host "gost setup failed: $($_.Exception.Message)"
           }
 
-      - name: Install Visual Studio Code directly (optional, robust, no Chocolatey)
+      - name: Install Visual Studio Code directly (optional, fixed)
         continue-on-error: true
         run: |
           try {
@@ -171,12 +174,31 @@ jobs:
             Remove-Item "$env:TEMP\VSCodeSetup.exe" -Force -ErrorAction SilentlyContinue
           }
 
-      - name: Final Status Summary (always runs)
+      - name: Run humanex.py if present (optional)
+        continue-on-error: true
+        run: |
+          try {
+            $scriptPath = "C:\temp\workspace-files\humanex.py"
+
+            if (-not (Test-Path $scriptPath)) {
+              Write-Host "humanex.py not found, skipping"
+              exit 0
+            }
+
+            Write-Host "Running humanex.py..."
+            python $scriptPath
+            Write-Host "humanex.py execution finished"
+          } catch {
+            Write-Host "humanex.py failed: $($_.Exception.Message)"
+          }
+
+      - name: Final Status Summary
         if: always()
         run: |
           Write-Host ""
           Write-Host "===== FINAL SUMMARY ====="
 
+          # Tailscale
           $tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
           if (Test-Path $tailscaleExe) {
             Write-Host "Tailscale: Installed"
@@ -184,6 +206,13 @@ jobs:
             Write-Host "Tailscale: Not installed / failed"
           }
 
+          if ($env:TAILSCALE_IP) {
+            Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          } else {
+            Write-Host "Tailscale IP: Not available"
+          }
+
+          # VS Code
           $vscodeUser = "$env:LocalAppData\Programs\Microsoft VS Code\Code.exe"
           $vscodeSystem = "$env:ProgramFiles\Microsoft VS Code\Code.exe"
 
@@ -193,10 +222,11 @@ jobs:
             Write-Host "VS Code: Not installed / failed"
           }
 
+          # gost
           try {
             $gostProc = Get-Process gost -ErrorAction SilentlyContinue
             if ($gostProc) {
-              Write-Host "gost SOCKS5: Running"
+              Write-Host "gost SOCKS5: Running on 1080"
             } else {
               Write-Host "gost SOCKS5: Not running"
             }
@@ -204,11 +234,12 @@ jobs:
             Write-Host "gost SOCKS5: Unknown"
           }
 
-          if ($env:TAILSCALE_IP) {
-            Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          # Files
+          if (Test-Path "C:\temp\workspace-files") {
+            Write-Host "Working folder: C:\temp\workspace-files"
+            Get-ChildItem "C:\temp\workspace-files" -Force | Select-Object Name, Length, LastWriteTime
           } else {
-            Write-Host "Tailscale IP: Not available"
+            Write-Host "Working folder missing"
           }
 
-          Write-Host "Workspace copy target: C:\temp\workspace-files"
           Write-Host "========================="
