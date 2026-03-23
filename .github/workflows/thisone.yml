@@ -1,0 +1,214 @@
+name: Windows Setup (Robust Single Job)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Upgrade pip (optional, continue on failure)
+        continue-on-error: true
+        run: |
+          try {
+            python -m pip install --upgrade pip
+            Write-Host "pip upgraded successfully"
+          } catch {
+            Write-Host "pip upgrade failed: $($_.Exception.Message)"
+          }
+
+      - name: Install Python Dependencies (optional, continue on failure)
+        continue-on-error: true
+        run: |
+          try {
+            pip install PyQt5 playwright requests
+            Write-Host "Python dependencies installed"
+          } catch {
+            Write-Host "Python dependency install failed: $($_.Exception.Message)"
+          }
+
+      - name: Install Playwright Browsers (optional, continue on failure)
+        continue-on-error: true
+        run: |
+          try {
+            playwright install
+            Write-Host "Playwright browsers installed"
+          } catch {
+            Write-Host "Playwright browser install failed: $($_.Exception.Message)"
+          }
+
+      - name: Create Folder Structure and Copy Files (skip missing files individually)
+        continue-on-error: true
+        run: |
+          $target = "C:\temp\workspace-files"
+          New-Item -Path $target -ItemType Directory -Force | Out-Null
+
+          $files = @(
+            "prox.txt",
+            "rpa.json",
+            "useragent.txt",
+            "humanex.py"
+          )
+
+          foreach ($file in $files) {
+            $src = Join-Path $env:GITHUB_WORKSPACE $file
+            if (Test-Path $src) {
+              Copy-Item -Path $src -Destination $target -Force
+              Write-Host "Copied: $file"
+            } else {
+              Write-Host "Missing, skipped: $file"
+            }
+          }
+
+          Write-Host "Final contents:"
+          Get-ChildItem $target -Force | Select-Object Name, Length, LastWriteTime
+
+      - name: Install Tailscale (optional, continue on failure)
+        continue-on-error: true
+        run: |
+          try {
+            $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+            $installerPath = "$env:TEMP\tailscale.msi"
+
+            Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -UseBasicParsing
+            Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+
+            Write-Host "Tailscale install attempted"
+          } catch {
+            Write-Host "Tailscale install failed: $($_.Exception.Message)"
+          }
+
+      - name: Start Tailscale if auth key exists (optional, continue on failure)
+        continue-on-error: true
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          try {
+            if (-not $env:TAILSCALE_AUTH_KEY) {
+              Write-Host "TAILSCALE_AUTH_KEY not set, skipping Tailscale startup"
+              exit 0
+            }
+
+            $tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+            if (-not (Test-Path $tailscaleExe)) {
+              Write-Host "Tailscale executable not found, skipping startup"
+              exit 0
+            }
+
+            & $tailscaleExe up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=gh-setup-$env:GITHUB_RUN_ID
+
+            $tsIP = $null
+            for ($i = 0; $i -lt 12; $i++) {
+              try {
+                $tsIP = & $tailscaleExe ip -4
+              } catch {}
+              if ($tsIP) { break }
+              Start-Sleep -Seconds 5
+            }
+
+            if ($tsIP) {
+              "TAILSCALE_IP=$tsIP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              Write-Host "Tailscale IP: $tsIP"
+            } else {
+              Write-Host "Tailscale IP not assigned, continuing without it"
+            }
+          } catch {
+            Write-Host "Tailscale startup failed: $($_.Exception.Message)"
+          }
+
+      - name: Install gost SOCKS5 proxy (optional, continue on failure)
+        continue-on-error: true
+        run: |
+          try {
+            $gostUrl = "https://github.com/go-gost/gost/releases/download/v3.0.0/gost_3.0.0_windows_amd64.zip"
+            $zipPath = "$env:TEMP\gost.zip"
+            $extractPath = "C:\gost"
+
+            Invoke-WebRequest -Uri $gostUrl -OutFile $zipPath -UseBasicParsing
+            Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+
+            $exePath = (Get-ChildItem $extractPath -Recurse | Where-Object { $_.Name -eq "gost.exe" } | Select-Object -First 1).FullName
+            if (-not $exePath) {
+              Write-Host "gost.exe not found after extraction"
+              exit 0
+            }
+
+            Start-Process -FilePath $exePath -ArgumentList '-L=:1080' -WindowStyle Hidden
+            Write-Host "SOCKS5 proxy started on port 1080"
+          } catch {
+            Write-Host "gost setup failed: $($_.Exception.Message)"
+          }
+
+      - name: Install Visual Studio Code directly (optional, robust, no Chocolatey)
+        continue-on-error: true
+        run: |
+          try {
+            $url = "https://update.code.visualstudio.com/latest/win32-x64-user/stable"
+            $out = "$env:TEMP\VSCodeSetup.exe"
+
+            Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+            Start-Process -FilePath $out -ArgumentList "/verysilent /suppressmsgboxes /mergetasks=!runcode" -Wait
+
+            Write-Host "VS Code install attempted"
+          } catch {
+            Write-Host "VS Code install failed: $($_.Exception.Message)"
+          } finally {
+            Remove-Item "$env:TEMP\VSCodeSetup.exe" -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Final Status Summary (always runs)
+        if: always()
+        run: |
+          Write-Host ""
+          Write-Host "===== FINAL SUMMARY ====="
+
+          $tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+          if (Test-Path $tailscaleExe) {
+            Write-Host "Tailscale: Installed"
+          } else {
+            Write-Host "Tailscale: Not installed / failed"
+          }
+
+          $vscodeUser = "$env:LocalAppData\Programs\Microsoft VS Code\Code.exe"
+          $vscodeSystem = "$env:ProgramFiles\Microsoft VS Code\Code.exe"
+
+          if ((Test-Path $vscodeUser) -or (Test-Path $vscodeSystem)) {
+            Write-Host "VS Code: Installed"
+          } else {
+            Write-Host "VS Code: Not installed / failed"
+          }
+
+          try {
+            $gostProc = Get-Process gost -ErrorAction SilentlyContinue
+            if ($gostProc) {
+              Write-Host "gost SOCKS5: Running"
+            } else {
+              Write-Host "gost SOCKS5: Not running"
+            }
+          } catch {
+            Write-Host "gost SOCKS5: Unknown"
+          }
+
+          if ($env:TAILSCALE_IP) {
+            Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          } else {
+            Write-Host "Tailscale IP: Not available"
+          }
+
+          Write-Host "Workspace copy target: C:\temp\workspace-files"
+          Write-Host "========================="
